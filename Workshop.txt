@@ -1,0 +1,5 @@
+version=1
+title=[B42] Excavation Indoor Patch
+description=
+tags=Build 42;Building;Misc;Multiplayer;Realistic
+visibility=public

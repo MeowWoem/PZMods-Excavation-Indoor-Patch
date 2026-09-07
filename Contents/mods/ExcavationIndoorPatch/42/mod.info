@@ -1,0 +1,5 @@
+name=Excavation Indoor Patch
+id=ExcavationIndoorPatch
+poster=poster.png
+author=Amenophis
+require=\Excavation
