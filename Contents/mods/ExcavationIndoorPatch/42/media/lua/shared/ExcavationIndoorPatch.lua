@@ -2,19 +2,47 @@ local DigSquareAction = require("Excavation/timedActions/DigSquareAction");
 local DigStairsAction = require("Excavation/timedActions/DigStairsAction");
 
 local MOD_DATA_KEY = "ExcavationIndoorPatch";
+local DEBUG_LOG_ENABLED = true;
 
 local pendingSquares = {};      -- squares waiting for their turn in the OnTick queue (one per tick)
 local pendingPatchSquares = {}; -- squares whose BuildingRoomsEditor room was created but not yet applyChanges()'d
 local watchedSquares = {};      -- squareKey -> true, checked by OnZombieCreate
 local isDirty = false;          -- true once at least one square is staged in pendingPatchSquares
 
+local function isDebugAllowed()
+    return isDebugEnabled() or DEBUG_LOG_ENABLED;
+end
+
 local function createCoordinateKey(square)
     return string.format("%d,%d,%d", square:getX(), square:getY(), square:getZ());
 end
 
+local function applyPatchServer(square)
+
+    if(not isMultiplayer() or (isMultiplayer() and not isServer())) then return; end
+
+    local metaGrid = IsoWorld.instance:getMetaGrid();
+    local roomDef = metaGrid:getRoomAt(square:getX(), square:getY(), square:getZ());
+    
+    if(isDebugAllowed()) then
+        print(string.format("[ExcavationIndoorPatch] applyPatchServer: square=%s roomDef=%s", createCoordinateKey(square), tostring(roomDef)));
+    end
+
+    local ok, err = pcall(function()
+        square:setRoomID(roomDef:getID());
+    end)
+
+    if(isDebugAllowed()) then
+        print(string.format("[ExcavationIndoorPatch] setRoomID ok=%s err=%s", tostring(ok), tostring(err)));
+        print(string.format("[ExcavationIndoorPatch] after setRoomID -> getRoom(): %s", tostring(square:getRoom())));
+        print(string.format("[ExcavationIndoorPatch] after setRoomID -> isInARoom(): %s", tostring(square:isInARoom())));
+    end
+
+end
+
 local function patchSquare(square)
     local squareKey = createCoordinateKey(square);
-
+    
     local room = square:getRoom();
     local bDef = room:getBuilding():getDef();
 
@@ -45,19 +73,22 @@ local function patchSquare(square)
 
     square:getModData()[MOD_DATA_KEY] = true;
 
-    if(isDebugEnabled()) then
+    if(isDebugAllowed()) then
         print(string.format("[ExcavationIndoorPatch] room created at %s; isInARoom=%s", squareKey, tostring(square:isInARoom())));
+    end
+
+    if(isMultiplayer() and isServer()) then
+        sendServerCommand("ExcavationIndoorPatch", "refreshRooms", {
+            x = square:getX(),
+            y = square:getY(),
+            z = square:getZ(),
+        });
     end
 end
 
--- deferApply == true means: create the BuildingRoomsEditor room object and
--- stage it, but don't call applyChanges() or patchSquare() yet -- the caller
--- (the OnTick queue below) is responsible for calling applyChanges() once
--- for the whole batch and then patching every staged square in one pass.
--- This avoids one applyChanges() call per tile when many tiles stream in at
--- once (e.g. a whole basement loading via LoadGridsquare).
+
 local function registerSquare(square, deferApply)
-    if deferApply == nil then deferApply = false end
+    -- if deferApply == nil then deferApply = true end
 
     if not square or not (square:getZ() < 0 and square:hasFloor()) or square:isInARoom() then
         return false;
@@ -71,16 +102,19 @@ local function registerSquare(square, deferApply)
     local breRoom = breBuilding:createRoom(square:getZ());
     breRoom:addRectangle(square:getX(), square:getY(), 1, 1);
 
-    if deferApply then
+    -- if deferApply then
         table.insert(pendingPatchSquares, square);
         isDirty = true;
         return true; -- actually patched later, once the batched applyChanges() runs
-    end
+    -- end
 
-    bre:applyChanges(false);
-    patchSquare(square);
+    -- bre:applyChanges(false);
 
-    return square:isInARoom();
+    -- applyPatchServer(square);
+
+    -- patchSquare(square);
+
+    -- return square:isInARoom();
 end
 
 
@@ -90,27 +124,37 @@ Events.LoadGridsquare.Add(function(square)
     local modData = square:getModData();
     if modData[MOD_DATA_KEY] and not square:isInARoom() then
         table.insert(pendingSquares, square);
-        if(isDebugEnabled()) then
+        if(isDebugAllowed()) then
             print(string.format("[ExcavationIndoorPatch] pending room at %s", createCoordinateKey(square)));
         end
     end
+    
 end);
 
 Events.OnTick.Add(function()
 
     if #pendingSquares == 0 then
+
         if isDirty then
+
             isDirty = false;
             BuildingRoomsEditor.getInstance():applyChanges(false); -- one call for the whole batch
+            
             for _, square in ipairs(pendingPatchSquares) do
+                applyPatchServer(square);
                 patchSquare(square);
             end
+
             pendingPatchSquares = {};
-            if(isDebugEnabled()) then
+
+            if(isDebugAllowed()) then
                 print("[ExcavationIndoorPatch] OnTick: applied pending rooms");
             end
+
         end
+
         return;
+
     end
 
     local square = table.remove(pendingSquares);
@@ -131,9 +175,15 @@ Events.OnZombieCreate.Add(function(zombie)
         -- same removal pattern as vanilla's own ISSpawnHordeUI:onRemoveZombies()
         zombie:removeFromWorld();
         zombie:removeFromSquare();
-        if(isDebugEnabled()) then
+        if(isDebugAllowed()) then
             print(string.format("[ExcavationIndoorPatch] zeds spawned then removed at %s", createCoordinateKey(square)));
         end
+    end
+end);
+
+Events.OnServerCommand.Add(function(module, command, args)
+    if(module == "ExcavationIndoorPatch" and command == "refreshRooms") then
+        registerSquare(getSquare(args.x, args.y, args.z));
     end
 end);
 
