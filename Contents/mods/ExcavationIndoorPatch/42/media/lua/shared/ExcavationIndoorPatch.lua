@@ -30,7 +30,7 @@ local function applyPatchServer(square)
 
     local ok, err = pcall(function()
         square:setRoomID(roomDef:getID());
-    end)
+    end);
 
     if(isDebugAllowed()) then
         print(string.format("[ExcavationIndoorPatch] setRoomID ok=%s err=%s", tostring(ok), tostring(err)));
@@ -53,7 +53,7 @@ local function patchSquare(square)
     -- And we have to recreate the room on LoadGridsquare after a game restart, which is done in the LoadGridsquare event below.
     local ok, err = pcall(function()
         bDef:setUserDefined(false);
-    end)
+    end);
     if not ok then
         print("[ExcavationIndoorPatch] setUserDefined(false) failed: " .. tostring(err));
     end
