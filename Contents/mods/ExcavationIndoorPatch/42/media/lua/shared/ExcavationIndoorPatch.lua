@@ -4,10 +4,10 @@ local DigStairsAction = require("Excavation/timedActions/DigStairsAction");
 local MOD_DATA_KEY = "ExcavationIndoorPatch";
 local DEBUG_LOG_ENABLED = true;
 
-local pendingSquares = {};      -- squares waiting for their turn in the OnTick queue (one per tick)
-local pendingPatchSquares = {}; -- squares whose BuildingRoomsEditor room was created but not yet applyChanges()'d
-local watchedSquares = {};      -- squareKey -> true, checked by OnZombieCreate
-local isDirty = false;          -- true once at least one square is staged in pendingPatchSquares
+local pendingSquares = {};
+local pendingPatchSquares = {};
+local watchedSquares = {};
+local isDirty = false;
 
 local function isDebugAllowed()
     return isDebugEnabled() or DEBUG_LOG_ENABLED;
@@ -46,11 +46,6 @@ local function patchSquare(square)
     local room = square:getRoom();
     local bDef = room:getBuilding():getDef();
 
-    -- If we dont do this, the game crashes when the room is unloaded (i think). Probably the proper creation of the
-    -- room is incomplete but i dont know what else to do to fix it. This is a workaround.
-    -- It works, but it also causes the room is not persistent and allow to spawn zombies, which is not what we want.
-    -- So we have to watch the square and remove any zeds that spawn on it. See below in OnZombieCreate.
-    -- And we have to recreate the room on LoadGridsquare after a game restart, which is done in the LoadGridsquare event below.
     local ok, err = pcall(function()
         bDef:setUserDefined(false);
     end);
@@ -58,8 +53,6 @@ local function patchSquare(square)
         print("[ExcavationIndoorPatch] setUserDefined(false) failed: " .. tostring(err));
     end
 
-    -- An attempt to prevent zeds from spawning in the room, but it doesn't work. The zeds still spawn.
-    -- So we have to watch the square and remove any zeds that spawn on it. See below in OnZombieCreate.
     for i = 0, bDef:getRooms():size()-1 do
         local r = bDef:getRooms():get(i);
         r:setExplored(true);
@@ -67,8 +60,6 @@ local function patchSquare(square)
     bDef:setHasBeenVisited(true);
     bDef:setAllExplored(true);
 
-    -- Watch this square so OnZombieCreate removes any zombie roomSpotted()
-    -- drops on it, right at the moment it spawns.
     watchedSquares[squareKey] = true;
 
     square:getModData()[MOD_DATA_KEY] = true;
@@ -87,8 +78,7 @@ local function patchSquare(square)
 end
 
 
-local function registerSquare(square, deferApply)
-    -- if deferApply == nil then deferApply = true end
+local function registerSquare(square)
 
     if not square or not (square:getZ() < 0 and square:hasFloor()) or square:isInARoom() then
         return false;
@@ -102,19 +92,10 @@ local function registerSquare(square, deferApply)
     local breRoom = breBuilding:createRoom(square:getZ());
     breRoom:addRectangle(square:getX(), square:getY(), 1, 1);
 
-    -- if deferApply then
-        table.insert(pendingPatchSquares, square);
-        isDirty = true;
-        return true; -- actually patched later, once the batched applyChanges() runs
-    -- end
+    table.insert(pendingPatchSquares, square);
+    isDirty = true;
+    return true;
 
-    -- bre:applyChanges(false);
-
-    -- applyPatchServer(square);
-
-    -- patchSquare(square);
-
-    -- return square:isInARoom();
 end
 
 
@@ -158,12 +139,12 @@ Events.OnTick.Add(function()
     end
 
     local square = table.remove(pendingSquares);
-    registerSquare(square, true); -- defer: stage for the batched apply above
+    registerSquare(square);
 
 end);
 
 Events.OnPlayerMove.Add(function(player)
-    registerSquare(player:getSquare()); -- single tile, no batching needed
+    registerSquare(player:getSquare());
 end);
 
 Events.OnZombieCreate.Add(function(zombie)
@@ -171,8 +152,9 @@ Events.OnZombieCreate.Add(function(zombie)
     local square = zombie:getCurrentSquare();
     if not square then return; end
 
-    if watchedSquares[createCoordinateKey(square)] then
-        -- same removal pattern as vanilla's own ISSpawnHordeUI:onRemoveZombies()
+    local modData = square:getModData();
+
+    if watchedSquares[createCoordinateKey(square)] or modData[MOD_DATA_KEY] then
         zombie:removeFromWorld();
         zombie:removeFromSquare();
         if(isDebugAllowed()) then
@@ -207,7 +189,7 @@ function DigStairsAction:complete()
             square = getSquare(x + i, y, z - 1);
         end
         if(square) then
-            registerSquare(square); -- single tile, no batching needed
+            registerSquare(square);
         end
     end
 
@@ -220,7 +202,7 @@ function DigSquareAction:complete()
     local square = getSquare(self.x, self.y, self.z);
 
     if(square) then
-        registerSquare(square); -- single tile, no batching needed
+        registerSquare(square);
     end
 
     return result;
