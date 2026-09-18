@@ -1,0 +1,4 @@
+{
+    "Sandbox_ExcavationIndoorPatch_DebugInteriorRoom": "Debug Interior Room Creation",
+    "Sandbox_ExcavationIndoorPatch_DebugInteriorRoom_tooltip": "If enabled, everything related to room creation for excavated basements will be logged to the console.<BR>This option is ignored if the game is launched in Debug Mode."
+}

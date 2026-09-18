@@ -1,0 +1,10 @@
+VERSION = 1,
+
+option ExcavationIndoorPatch.DebugInteriorRoom
+{
+    type = boolean,
+    default = false,
+    page = Excavation,
+    translation = ExcavationIndoorPatch_DebugInteriorRoom,
+    tooltip = ExcavationIndoorPatch_DebugInteriorRoom_tooltip,
+}

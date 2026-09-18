@@ -2,7 +2,7 @@ local DigSquareAction = require("Excavation/timedActions/DigSquareAction");
 local DigStairsAction = require("Excavation/timedActions/DigStairsAction");
 
 local MOD_DATA_KEY = "ExcavationIndoorPatch";
-local DEBUG_LOG_ENABLED = true;
+local DEBUG_LOG_ENABLED = SandboxVars.ExcavationIndoorPatch.DebugInteriorRoom;
 
 local pendingSquares = {};
 local pendingPatchSquares = {};
