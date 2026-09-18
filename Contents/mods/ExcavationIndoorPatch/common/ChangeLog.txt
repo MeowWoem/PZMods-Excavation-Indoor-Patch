@@ -1,3 +1,10 @@
 [ v1.0.0 - 09.08.2026 ]
 Release
 [ ------ ]
+
+[ v1.0.1 - 09.18.2026 ]
+Added:
+- Added a new sandbox option to enable/disable debug logs related to room creation for excavated basements
+Fixed:
+- Added an ultimate check to prevent zeds from spawning in an excavated basement
+[ ------ ]
