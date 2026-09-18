@@ -152,9 +152,7 @@ Events.OnZombieCreate.Add(function(zombie)
     local square = zombie:getCurrentSquare();
     if not square then return; end
 
-    local modData = square:getModData();
-
-    if watchedSquares[createCoordinateKey(square)] or modData[MOD_DATA_KEY] then
+    if watchedSquares[createCoordinateKey(square)] or square:getModData()[MOD_DATA_KEY] then
         zombie:removeFromWorld();
         zombie:removeFromSquare();
         if(isDebugAllowed()) then
