@@ -8,3 +8,8 @@ Added:
 Fixed:
 - Added an ultimate check to prevent zeds from spawning in an excavated basement
 [ ------ ]
+
+[ v1.0.2 - 09.19.2026 ]
+Fixed:
+- Fixed client freeze when grabbing a corpse in a dug basement
+[ ------ ]
