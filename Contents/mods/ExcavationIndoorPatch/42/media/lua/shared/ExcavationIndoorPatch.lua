@@ -149,6 +149,8 @@ end);
 
 Events.OnZombieCreate.Add(function(zombie)
 
+    if(isMultiplayer() and not isServer()) then return; end
+
     local square = zombie:getCurrentSquare();
     if not square then return; end
 
