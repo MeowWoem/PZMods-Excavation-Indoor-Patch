@@ -151,8 +151,7 @@ local function orderRects(rects, anchor)
 end
 
 local function findExistingRoom(comp)
-    local anchor, anchorDef = nil, nil;
-    local seen, distinct = {}, 0;
+    local defs, anchors, seen = {}, {}, {};
 
     for _, c in ipairs(comp.squares) do
         for _, d in ipairs(NEIGHBORS) do
@@ -163,61 +162,128 @@ local function findExistingRoom(comp)
                     local room = n:getRoom();
                     local building = room and room:getBuilding();
                     local def = building and building:getDef();
-                    if def then
-                        if not seen[def] then
-                            seen[def] = true;
-                            distinct = distinct + 1;
-                        end
-                        if not anchor then
-                            anchor = { x = nx, y = ny };
-                            anchorDef = def;
-                        end
+                    if def and not seen[def] then
+                        seen[def] = true;
+                        defs[#defs + 1] = def;
+                        anchors[def] = { x = nx, y = ny };
                     end
                 end
             end
         end
     end
 
-    return anchor, anchorDef, distinct;
+    return defs, anchors;
 end
 
-local function buildRoomForComponent(bre, comp, copies)
-    local rects = computeRectangles(comp);
-    local anchor, existingDef, distinct = findExistingRoom(comp);
+local function groupComponents(components)
+    local defOwners = {};
 
+    for _, comp in ipairs(components) do
+        comp.defs, comp.anchors = findExistingRoom(comp);
+        for _, def in ipairs(comp.defs) do
+            defOwners[def] = defOwners[def] or {};
+            table.insert(defOwners[def], comp);
+        end
+    end
+
+    local groups = {};
+    local visited = {};
+
+    for _, comp in ipairs(components) do
+        if not visited[comp] then
+            local group = { z = comp.z, comps = {}, defs = {} };
+            local seenDefs = {};
+            local queue, head = { comp }, 1;
+            visited[comp] = true;
+
+            while head <= #queue do
+                local c = queue[head];
+                head = head + 1;
+                group.comps[#group.comps + 1] = c;
+
+                for _, def in ipairs(c.defs) do
+                    if not seenDefs[def] then
+                        seenDefs[def] = true;
+                        group.defs[#group.defs + 1] = def;
+                        for _, other in ipairs(defOwners[def]) do
+                            if not visited[other] then
+                                visited[other] = true;
+                                queue[#queue + 1] = other;
+                            end
+                        end
+                    end
+                end
+            end
+
+            groups[#groups + 1] = group;
+        end
+    end
+
+    return groups;
+end
+
+local function appendDefRects(breRoom, def, z)
+    local rooms = def:getRooms();
+    for i = 0, rooms:size() - 1 do
+        local roomDef = rooms:get(i);
+        if roomDef:getZ() == z then
+            local rects = roomDef:getRects();
+            for j = 0, rects:size() - 1 do
+                local r = rects:get(j);
+                breRoom:addRectangle(r:getX(), r:getY(), r:getW(), r:getH());
+            end
+        end
+    end
+end
+
+local function buildRoomForGroup(bre, group)
+    local primary = group.defs[1];
     local breBuilding, breRoom = nil, nil;
 
-    if existingDef then
-        if distinct > 1 then
-            debugLog("component touches %d existing rooms, attaching to the first only", distinct);
+    if primary then
+        local anchor = nil;
+        for _, comp in ipairs(group.comps) do
+            if comp.anchors[primary] then
+                anchor = comp.anchors[primary];
+                break
+            end
         end
 
-        breBuilding = copies[existingDef];
-        if not breBuilding then
-            breBuilding = bre:copyExistingBuilding(existingDef);
-            copies[existingDef] = breBuilding;
-        end
-
-        local idx = breBuilding:getRoomIndexAt(anchor.x, anchor.y, comp.z);
+        breBuilding = bre:copyExistingBuilding(primary);
+        local idx = anchor and breBuilding:getRoomIndexAt(anchor.x, anchor.y, group.z) or -1;
         if idx >= 0 then
             breRoom = breBuilding:getRoomByIndex(idx);
+        else
+            bre:removeBuilding(breBuilding);
         end
     end
 
     if not breRoom then
-        anchor = nil;
         breBuilding = bre:createBuilding();
-        breRoom = breBuilding:createRoom(comp.z);
+        breRoom = breBuilding:createRoom(group.z);
+        if primary then
+            appendDefRects(breRoom, primary, group.z);
+        end
     end
 
-    local ordered = orderRects(rects, anchor);
-    for _, r in ipairs(ordered) do
-        breRoom:addRectangle(r.x, r.y, r.w, r.h);
+    for i = 2, #group.defs do
+        appendDefRects(breRoom, group.defs[i], group.z);
+    end
+
+    local squareCount, rectCount = 0, 0;
+    for _, comp in ipairs(group.comps) do
+        local anchor = comp.defs[1] and comp.anchors[comp.defs[1]] or nil;
+        local ordered = orderRects(computeRectangles(comp), anchor);
+        for _, r in ipairs(ordered) do
+            breRoom:addRectangle(r.x, r.y, r.w, r.h);
+        end
+        squareCount = squareCount + #comp.squares;
+        rectCount = rectCount + #ordered;
     end
     breBuilding:setEdited(true);
 
-    debugLog("component of %d squares -> %d rectangle(s), %s",
-        #comp.squares, #ordered, anchor and "attached to existing room" or "new room");
+    debugLog("group of %d component(s), %d square(s), %d new rectangle(s), merged with %d existing building(s)",
+        #group.comps, squareCount, rectCount, #group.defs);
 end
 
 local function applyPatchServer(square)
@@ -299,10 +365,10 @@ local function flushBatch()
     if #components == 0 then return; end
 
     local bre = BuildingRoomsEditor.getInstance();
-    local copies = {};
 
-    for _, comp in ipairs(components) do
-        buildRoomForComponent(bre, comp, copies);
+    local groups = groupComponents(components);
+    for _, group in ipairs(groups) do
+        buildRoomForGroup(bre, group);
     end
 
     bre:applyChanges(false);
