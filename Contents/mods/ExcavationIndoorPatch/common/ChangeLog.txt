@@ -13,3 +13,15 @@ Fixed:
 Fixed:
 - Fixed client freeze when grabbing a corpse in a dug basement
 [ ------ ]
+
+[ v1.1.0 - 09.20.2026 ]
+Changed:
+- Reworked interior room creation: a dug basement is now a single room instead of one room per square.
+- A newly dug square next to an existing dug basement is added to its room, and digging a square that connects several dug basements merges them into one room.
+- Dug basements are never merged with vanilla basements or buildings.
+- A "duplicate BuildingDef.metaID" error may now appear in the logs when rooms are merged. It is expected and can be safely ignored (a message is logged beforehand to say so).
+
+Fixed:
+- The single room rework fixes the bed "Sleep" option not appearing unless you were standing in the same room as the bed.
+- Light switches built in a dug basement now light up the whole room instead of only the square they were placed on.
+[ ------ ]
