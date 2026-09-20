@@ -318,6 +318,46 @@ local function patchBuildingDef(bDef)
     bDef:setAllExplored(true);
 end
 
+local function refreshGroupSquaresServer(group)
+    if not (isMultiplayer() and isServer()) then return; end
+    if #group.defs == 0 then return; end
+
+    local first = group.comps[1].squares[1];
+    local roomDef = IsoWorld.instance:getMetaGrid():getRoomAt(first.x, first.y, group.z);
+    if not roomDef then
+        debugLog("refreshGroupSquaresServer: no roomDef at %d,%d,%d", first.x, first.y, group.z);
+        return;
+    end
+    local roomId = roomDef:getID();
+
+    local count = 0;
+    for _, def in ipairs(group.defs) do
+        local rooms = def:getRooms();
+        for i = 0, rooms:size() - 1 do
+            local oldRoomDef = rooms:get(i);
+            if oldRoomDef:getZ() == group.z then
+                local rects = oldRoomDef:getRects();
+                for j = 0, rects:size() - 1 do
+                    local r = rects:get(j);
+                    for x = r:getX(), r:getX() + r:getW() - 1 do
+                        for y = r:getY(), r:getY() + r:getH() - 1 do
+                            local sq = getSquare(x, y, group.z);
+                            if sq then
+                                local ok = pcall(function()
+                                    sq:setRoomID(roomId);
+                                end);
+                                if ok then count = count + 1; end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    debugLog("refreshGroupSquaresServer: %d square(s) reassigned to room %s", count, tostring(roomId));
+end
+
 local function finalizeSquare(square, patchedDefs)
     applyPatchServer(square);
 
@@ -372,6 +412,10 @@ local function flushBatch()
     end
 
     bre:applyChanges(false);
+
+    for _, group in ipairs(groups) do
+        refreshGroupSquaresServer(group);
+    end
 
     local patchedDefs = {};
     local refreshed = {};
