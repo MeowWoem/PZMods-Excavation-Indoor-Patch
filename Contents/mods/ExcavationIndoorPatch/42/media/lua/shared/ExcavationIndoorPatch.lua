@@ -411,6 +411,14 @@ local function flushBatch()
         buildRoomForGroup(bre, group);
     end
 
+    local replacedCount = 0;
+    for _, group in ipairs(groups) do
+        replacedCount = replacedCount + #group.defs;
+    end
+    if replacedCount > 0 then
+        print(string.format("[ExcavationIndoorPatch] Replacing %d existing room(s): an \"ERROR: General ... duplicate BuildingDef.metaID\" line may follow. It is expected (the engine swaps the old building for the merged one) and can be safely ignored.", replacedCount));
+    end
+
     bre:applyChanges(false);
 
     for _, group in ipairs(groups) do
